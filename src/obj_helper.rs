@@ -1,12 +1,12 @@
 use object::{read::ObjectSymbol, read::SymbolSection, Object, ObjectSection, SymbolKind};
 
 #[derive(Debug)]
-pub struct Function<'a> {
+pub struct Function {
     pub address: u64,
-    pub name: &'a str,
+    pub name: String,
 }
 
-pub fn get_functions<'a>(obj: &'a object::File) -> Vec<Function<'a>> {
+pub fn get_functions<'a>(obj: &'a object::File) -> Vec<Function> {
     let text_section_idx = obj.section_by_name(".text").unwrap().index();
     let mut funcs = vec![];
     for symbol in obj.symbols() {
@@ -16,7 +16,7 @@ pub fn get_functions<'a>(obj: &'a object::File) -> Vec<Function<'a>> {
                     funcs.push(Function {
                         address: symbol.address(),
                         // TODO: fix this
-                        name: symbol.name().unwrap(),
+                        name: symbol.name().unwrap().into(),
                     });
                 }
                 _ => {}

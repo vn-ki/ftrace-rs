@@ -95,7 +95,14 @@ impl ProcessInfo for Process {
     }
 
     fn step(&self) -> crate::defs::Result<()> {
+        use nix::sys::signal::Signal::*;
         ptrace::step(self.0, None)?;
+        if let Ok(WaitStatus::Stopped(_pid, SIGTRAP)) = wait::waitpid(self.0, None) {
+            // call init
+            debug!("stepped successfully");
+        } else {
+            panic!("fix me");
+        }
         Ok(())
     }
 }

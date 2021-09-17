@@ -22,6 +22,5 @@ pub trait ProcessInfo {
 
 pub trait Tracer<T: ProcessMem + ProcessInfo> {
     fn init(&mut self, process: &mut T) -> Result<()>;
-    // TODO: use concrete Results?
     fn breakpoint_hit(&mut self, process: &mut T) -> Result<()>;
 }

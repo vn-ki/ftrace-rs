@@ -4,10 +4,10 @@ use tracing::debug;
 
 use crate::breakpoint::Breakpoint;
 use crate::defs::{ProcessInfo, ProcessMem, Tracer, Result};
-use crate::obj_helper::get_functions;
+use crate::obj_helper::{Function, get_functions};
 
 pub struct X86Tracer {
-    breakpoints: HashMap<u64, Breakpoint>,
+    breakpoints: HashMap<u64, (Breakpoint, Function)>,
 }
 
 impl X86Tracer {
@@ -27,11 +27,11 @@ impl<T: ProcessMem + ProcessInfo> Tracer<T> for X86Tracer {
         let funcs = get_functions(&obj_file);
         debug!(?funcs);
 
-        for func in &funcs {
+        for func in funcs.into_iter() {
             debug!("breakpoint set at {}", func.address);
             let mut bp = Breakpoint::new(func.address);
             bp.enable(process)?;
-            self.breakpoints.insert(func.address, bp);
+            self.breakpoints.insert(func.address, (bp, func));
         }
         Ok(())
     }
@@ -40,10 +40,10 @@ impl<T: ProcessMem + ProcessInfo> Tracer<T> for X86Tracer {
         let regs = process.get_registers()?;
         debug!(?regs);
         let addr = regs.rip - 1;
-        if let Some(bp) = self.breakpoints.get_mut(&addr) {
-            // if let Some(func) = funcs.iter().find(|f| f.address == addr) {
-            //     print_function(&tracee, func);
-            // }
+        if let Some((bp, func)) = self.breakpoints.get_mut(&addr) {
+            debug!("breakpoint found {:?}", bp);
+            println!("{}", func.name);
+
             // disable bp
             // reduce rip
             // step
