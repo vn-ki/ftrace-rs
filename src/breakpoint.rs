@@ -26,4 +26,8 @@ impl<'a> Breakpoint {
         tracee.write_at(self.address, &[self.old_data])?;
         Ok(())
     }
+
+    pub const fn instr_len() -> u64 {
+        1
+    }
 }

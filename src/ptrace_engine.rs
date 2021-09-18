@@ -2,6 +2,7 @@
 //! Refs:
 //! - https://blog.tartanllama.xyz/writing-a-linux-debugger-setup/
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Child;
 use std::{os::unix::prelude::CommandExt, process::Command};
@@ -10,54 +11,108 @@ use nix::sys::ptrace;
 use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::os::unix::fs::FileExt;
-use tracing::{debug, warn};
+use tracing::debug;
 
-use crate::defs::{ProcessInfo, ProcessMem, Registers, Result, Tracer};
+use crate::breakpoint::Breakpoint;
+use crate::defs::{DebuggerEngine, DebuggerStatus, ProcessInfo, ProcessMem, Registers, Result};
 
-pub struct PtraceEngine;
+pub struct PtraceEngine {
+    breakpoints: HashMap<u64, Breakpoint>,
+}
 
-impl PtraceEngine {
-    pub fn start<T: Tracer<Process>>(cmd: Command, mut tracer: T) -> Result<()> {
+impl DebuggerEngine for PtraceEngine {
+    fn set_breakpoint(&mut self, pid: Pid, address: u64) -> Result<()> {
+        let process = &mut Process(pid);
+        let mut bp = Breakpoint::new(address);
+        bp.enable(process)?;
+        self.breakpoints.insert(address, bp);
+        Ok(())
+    }
+
+    fn cont(&mut self, pid: Pid) -> Result<()> {
+        if let Some(bp) = self.get_breakpoint(pid)? {
+            ptrace::step(pid, None)?;
+            let _status = wait::waitpid(pid, None)?;
+            bp.enable(&mut Process(pid))?;
+        }
+        ptrace::cont(pid, None)?;
+        Ok(())
+    }
+
+    // fn step(&mut self, pid: Pid) -> Result<()> {
+    //     if let Some(status) = self.step_over_bp(pid)? {
+    //         return self.handle_wait(status);
+    //     }
+    //     Ok(())
+    // }
+
+    fn spawn(cmd: Command) -> Result<(Self, Child)> {
         use nix::sys::signal::Signal::*;
 
-        let child = Self::spawn(cmd)?;
+        let child = Self::spawn_cmd(cmd)?;
         let pid = Pid::from_raw(child.id() as i32);
         if let Ok(WaitStatus::Stopped(_pid, SIGTRAP)) = wait::waitpid(pid, None) {
             // call init
             debug!("ptrace successful");
-            tracer.init(&mut Process(pid))?;
+            // tracer.init(&mut Process(pid))?;
             ptrace::cont(pid, None)?;
         } else {
             panic!("fix me");
         }
-
-        while let Ok(status) = wait::waitpid(None, Some(WaitPidFlag::__WALL)) {
-            match status {
-                // TODO: call init when a new child appears
-                WaitStatus::Stopped(pid, SIGTRAP) => {
-                    debug!(?status);
-                    if let Err(err) = tracer.breakpoint_hit(&mut Process(pid)) {
-                        warn!(?err);
-                    }
-                }
-                WaitStatus::Stopped(_pid, SIGSEGV) => {
-                    debug!(?status);
-                    break;
-                }
-                WaitStatus::Exited(pid, exit_code) => {
-                    debug!("process with pid {} exited with code {}", pid, exit_code);
-                    break;
-                }
-                _ => {
-                    debug!(?status);
-                }
-            }
-            ptrace::cont(pid, None)?;
-        }
-        Ok(())
+        Ok((
+            Self {
+                breakpoints: HashMap::new(),
+            },
+            child,
+        ))
     }
 
-    fn spawn(mut cmd: Command) -> Result<Child> {
+    fn wait(&mut self) -> Result<DebuggerStatus> {
+        // XXX: the issue with seperating wait from cont and wait
+        // is that step and cont must be followed by wait
+        self.handle_wait(wait::waitpid(None, Some(WaitPidFlag::__WALL))?)
+    }
+}
+
+impl PtraceEngine {
+    pub fn get_breakpoint(&mut self, pid: Pid) -> Result<Option<&mut Breakpoint>> {
+        let regs = Process(pid).get_registers()?;
+        Ok(self.breakpoints.get_mut(&regs.rip))
+    }
+
+    pub fn handle_wait(&mut self, status: WaitStatus) -> Result<DebuggerStatus> {
+        use nix::sys::signal::Signal::*;
+        match status {
+            WaitStatus::Stopped(pid, SIGTRAP) => {
+                debug!(?status);
+                let process = &mut Process(pid);
+                let mut regs = process.get_registers()?;
+                let bp_addr = regs.rip - Breakpoint::instr_len();
+
+                if let Some(bp) = self.breakpoints.get_mut(&bp_addr) {
+                    bp.disable(process)?;
+                    regs.rip -= Breakpoint::instr_len();
+                    process.set_registers(regs)?;
+                    return Ok(DebuggerStatus::BreakpointHit(pid, bp_addr));
+                }
+                Ok(DebuggerStatus::Stopped(pid))
+            }
+            WaitStatus::Stopped(pid, SIGSEGV) => {
+                debug!(?status);
+                Ok(DebuggerStatus::Stopped(pid))
+            }
+            WaitStatus::Exited(pid, exit_code) => {
+                debug!("process with pid {} exited with code {}", pid, exit_code);
+                Ok(DebuggerStatus::Exited(pid, exit_code))
+            }
+            _ => {
+                debug!(?status);
+                Ok(DebuggerStatus::Unknown)
+            }
+        }
+    }
+
+    fn spawn_cmd(mut cmd: Command) -> Result<Child> {
         unsafe {
             cmd.pre_exec(|| ptrace::traceme().map_err(|errno| errno.into()));
         }

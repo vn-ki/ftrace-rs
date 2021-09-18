@@ -1,5 +1,6 @@
 use std::io;
 use std::path::PathBuf;
+use std::process::{Child, Command};
 
 use crate::error;
 
@@ -20,7 +21,28 @@ pub trait ProcessInfo {
     fn step(&self) -> Result<()>;
 }
 
-pub trait Tracer<T: ProcessMem + ProcessInfo> {
-    fn init(&mut self, process: &mut T) -> Result<()>;
-    fn breakpoint_hit(&mut self, process: &mut T) -> Result<()>;
+#[cfg(unix)]
+pub type Pid = nix::unistd::Pid;
+
+#[derive(Debug)]
+pub enum DebuggerStatus {
+    /// Breakpoint hit for the Pid at address u64
+    BreakpointHit(Pid, u64),
+    /// Stopeed for some reason
+    // TODO: add reason
+    Stopped(Pid),
+    /// Exited(Pid, exit_code)
+    Exited(Pid, i32),
+    /// Some unknown status
+    Unknown,
+}
+
+pub trait DebuggerEngine {
+    fn spawn(cmd: Command) -> Result<(Self, Child)>
+    where
+        Self: Sized;
+    fn set_breakpoint(&mut self, pid: Pid, address: u64) -> Result<()>;
+    fn cont(&mut self, pid: Pid) -> Result<()>;
+    // fn step(&mut self, pid: Pid) -> Result<()>;
+    fn wait(&mut self) -> Result<DebuggerStatus>;
 }

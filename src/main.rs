@@ -1,15 +1,18 @@
-use x86_tracer::X86Tracer;
 use std::process::Command;
+use std::collections::HashMap;
+
 use tracing_subscriber;
+use tracing::{debug, warn};
 
 mod breakpoint;
-mod ptrace_engine;
 mod defs;
-mod x86_tracer;
 mod error;
 mod obj_helper;
+mod ptrace_engine;
 
-use crate::defs::Result;
+use crate::defs::{Pid, Result};
+use crate::defs::{DebuggerEngine, DebuggerStatus};
+use crate::obj_helper::get_functions;
 
 // fn parse_address(s: &str) -> Result<u64> {
 //     let s = s.trim_start_matches("0x");
@@ -19,7 +22,42 @@ use crate::defs::Result;
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let cmd = Command::new("./fact");
-    ptrace_engine::PtraceEngine::start(cmd, X86Tracer::new())?;
+    let (mut engine, child) = ptrace_engine::PtraceEngine::spawn(cmd)?;
+
+    let bin_data = std::fs::read("./fact")?;
+    let obj_file = object::File::parse(&*bin_data)?;
+    let funcs = get_functions(&obj_file);
+    // debug!(?funcs);
+    let mut global_pid = Pid::from_raw(child.id() as i32);
+    let mut funcs_map = HashMap::new();
+
+    for func in funcs.into_iter() {
+        debug!("breakpoint set at {}", func.address);
+        engine.set_breakpoint(global_pid, func.address)?;
+        funcs_map.insert(func.address, func);
+    }
+
+    // TODO: this wait and cont thingy is kinda falky
+    while let Ok(status) = engine.wait() {
+        match status {
+            DebuggerStatus::BreakpointHit(pid, address) => {
+                debug!(?status);
+                global_pid = pid;
+                if let Some(func) = funcs_map.get(&address) {
+                    println!("{}", func.name);
+                }
+            }
+            DebuggerStatus::Exited(_pid, _exit_code) => {
+                break;
+            }
+            DebuggerStatus::Stopped(pid) => {
+                warn!("pid {} got Stopped event", pid);
+                break;
+            }
+            _ => {}
+        }
+        engine.cont(global_pid).unwrap();
+    }
     Ok(())
 }
 
