@@ -1,6 +1,8 @@
 //! nix ptrace engine
+//!
 //! Refs:
-//! - https://blog.tartanllama.xyz/writing-a-linux-debugger-setup/
+//! - A debugger using ptrace: https://blog.tartanllama.xyz/writing-a-linux-debugger-setup/
+//! - Mac vmmap in Rust: https://jvns.ca/blog/2018/01/26/mac-memory-maps/
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -14,7 +16,10 @@ use std::os::unix::fs::FileExt;
 use tracing::debug;
 
 use crate::breakpoint::Breakpoint;
-use crate::defs::{DebuggerEngine, DebuggerStatus, ProcessInfo, ProcessMem, Registers, Result};
+use crate::defs::{
+    DebuggerEngine, DebuggerStatus, MemoryRegion, ProcessInfo, ProcessMem, Registers, Result,
+};
+use crate::utils::parse_address_without_0x;
 
 pub struct PtraceEngine {
     breakpoints: HashMap<u64, Breakpoint>,
@@ -84,7 +89,7 @@ impl PtraceEngine {
         use nix::sys::signal::Signal::*;
         match status {
             WaitStatus::Stopped(pid, SIGTRAP) => {
-                debug!(?status);
+                // debug!(?status);
                 let process = &mut Process(pid);
                 let mut regs = process.get_registers()?;
                 let bp_addr = regs.rip - Breakpoint::instr_len();
@@ -95,6 +100,7 @@ impl PtraceEngine {
                     process.set_registers(regs)?;
                     return Ok(DebuggerStatus::BreakpointHit(pid, bp_addr));
                 }
+                debug!(?regs, "did not find a breakpoint, still got a sigtrap");
                 Ok(DebuggerStatus::Stopped(pid))
             }
             WaitStatus::Stopped(pid, SIGSEGV) => {
@@ -121,7 +127,7 @@ impl PtraceEngine {
     }
 }
 
-pub struct Process(Pid);
+pub struct Process(pub Pid);
 
 impl Process {
     fn proc_mem_path(&self) -> String {
@@ -129,6 +135,38 @@ impl Process {
     }
     fn proc_cmdline_path(&self) -> String {
         format!("/proc/{}/cmdline", self.0)
+    }
+    fn proc_vmmaps(&self) -> String {
+        format!("/proc/{}/maps", self.0)
+    }
+
+    #[tracing::instrument]
+    fn vmmap_line_to_region(line: &str) -> MemoryRegion {
+        // TODO: return result instead of unwrapping
+        let mut iter = line.splitn(5, char::is_whitespace);
+        let [range, _, _, _, file] = [(); 5].map(|_| iter.next().unwrap());
+        debug!(?range, ?file);
+
+        let mut range_iter = range.splitn(2, '-');
+        let start = parse_address_without_0x(range_iter.next().unwrap()).unwrap();
+        let end = parse_address_without_0x(range_iter.next().unwrap()).unwrap();
+        let size = end - start;
+
+        let mut iter = file.splitn(2, char::is_whitespace);
+        // skip over the the first number thingy
+        iter.next().unwrap();
+        if let Some(file) = iter.next() {
+            return MemoryRegion {
+                filename: Some(file.trim().to_owned()),
+                start,
+                size,
+            };
+        }
+        MemoryRegion {
+            filename: None,
+            start,
+            size,
+        }
     }
 }
 
@@ -141,24 +179,19 @@ impl ProcessInfo for Process {
         })
     }
 
-    fn get_registers(&self) -> crate::defs::Result<Registers> {
+    fn get_registers(&self) -> Result<Registers> {
         ptrace::getregs(self.0).map_err(|err| err.into())
     }
 
-    fn set_registers(&self, regs: Registers) -> crate::defs::Result<()> {
+    fn set_registers(&self, regs: Registers) -> Result<()> {
         ptrace::setregs(self.0, regs).map_err(|err| err.into())
     }
 
-    fn step(&self) -> crate::defs::Result<()> {
-        use nix::sys::signal::Signal::*;
-        ptrace::step(self.0, None)?;
-        if let Ok(WaitStatus::Stopped(_pid, SIGTRAP)) = wait::waitpid(self.0, None) {
-            // call init
-            debug!("stepped successfully");
-        } else {
-            panic!("fix me");
-        }
-        Ok(())
+    fn get_memory_maps(&self) -> Result<Vec<MemoryRegion>> {
+        Ok(std::fs::read_to_string(self.proc_vmmaps())?
+            .lines()
+            .map(Self::vmmap_line_to_region)
+            .collect())
     }
 }
 

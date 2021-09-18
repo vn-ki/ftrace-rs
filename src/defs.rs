@@ -13,12 +13,27 @@ pub type Result<T> = std::result::Result<T, error::Error>;
 
 pub type Registers = nix::libc::user_regs_struct;
 
+#[derive(Debug)]
+pub struct MemoryRegion {
+    pub filename: Option<String>,
+    pub start: u64,
+    pub size: u64,
+}
+
+/// This is an abstraction over getting specific process related into on target systems
 pub trait ProcessInfo {
+    /// Returns the file path of the process
     fn file_path(&self) -> io::Result<PathBuf>;
+
+    fn get_memory_maps(&self) -> Result<Vec<MemoryRegion>>;
+
+    /// Gets the registers of the process
+    // TODO: should this be DebuggerEngine?
     fn get_registers(&self) -> Result<Registers>;
+
+    /// Sets the registers of the process
+    // TODO: should this be DebuggerEngine?
     fn set_registers(&self, regs: Registers) -> Result<()>;
-    // TODO: maybe this should be somewhere else maybe in the engine?
-    fn step(&self) -> Result<()>;
 }
 
 #[cfg(unix)]

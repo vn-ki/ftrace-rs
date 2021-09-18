@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::collections::HashMap;
 
+use defs::ProcessInfo;
+use ptrace_engine::Process;
 use tracing_subscriber;
 use tracing::{debug, warn};
 
@@ -9,15 +11,11 @@ mod defs;
 mod error;
 mod obj_helper;
 mod ptrace_engine;
+mod utils;
 
 use crate::defs::{Pid, Result};
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::obj_helper::get_functions;
-
-// fn parse_address(s: &str) -> Result<u64> {
-//     let s = s.trim_start_matches("0x");
-//     Ok(u64::from_str_radix(s, 16)?)
-// }
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -30,6 +28,9 @@ fn main() -> Result<()> {
     // debug!(?funcs);
     let mut global_pid = Pid::from_raw(child.id() as i32);
     let mut funcs_map = HashMap::new();
+    let process = &mut Process(global_pid);
+    let maps = process.get_memory_maps()?;
+    debug!(?maps);
 
     for func in funcs.into_iter() {
         debug!("breakpoint set at {}", func.address);
@@ -51,7 +52,7 @@ fn main() -> Result<()> {
                 break;
             }
             DebuggerStatus::Stopped(pid) => {
-                warn!("pid {} got Stopped event", pid);
+                warn!(?pid, "got Stopped event");
                 break;
             }
             _ => {}
