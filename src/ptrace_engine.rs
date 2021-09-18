@@ -52,18 +52,7 @@ impl DebuggerEngine for PtraceEngine {
     // }
 
     fn spawn(cmd: Command) -> Result<(Self, Child)> {
-        use nix::sys::signal::Signal::*;
-
         let child = Self::spawn_cmd(cmd)?;
-        let pid = Pid::from_raw(child.id() as i32);
-        if let Ok(WaitStatus::Stopped(_pid, SIGTRAP)) = wait::waitpid(pid, None) {
-            // call init
-            debug!("ptrace successful");
-            // tracer.init(&mut Process(pid))?;
-            ptrace::cont(pid, None)?;
-        } else {
-            panic!("fix me");
-        }
         Ok((
             Self {
                 breakpoints: HashMap::new(),

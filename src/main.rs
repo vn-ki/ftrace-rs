@@ -37,6 +37,7 @@ fn main() -> Result<()> {
         engine.set_breakpoint(global_pid, func.address)?;
         funcs_map.insert(func.address, func);
     }
+    engine.cont(global_pid)?;
 
     // TODO: this wait and cont thingy is kinda falky
     while let Ok(status) = engine.wait() {
