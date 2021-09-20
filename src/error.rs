@@ -8,4 +8,16 @@ pub enum Error {
 
     #[error("Object file parse error")]
     ObjectFile(#[from] object::Error),
+
+    #[error("gmili DWARF error")]
+    Gimli(#[from] gimli::Error),
+
+    #[error("ddbug DWARF error")]
+    Ddbug(#[from] ddbug_parser::Error),
+}
+
+#[derive(Debug)]
+pub enum ParamFindingFailure {
+    DwarfNoSize,
+    DwarfNoFrameLocNoReg,
 }

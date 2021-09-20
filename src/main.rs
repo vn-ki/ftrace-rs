@@ -17,25 +17,27 @@ mod utils;
 
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::defs::{Pid, Result};
-use crate::obj_helper::get_functions;
+use crate::obj_helper::{get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let binary = Path::new("./fact-pie");
-
-    let cmd = Command::new(binary);
-    let (mut engine, child) = ptrace_engine::PtraceEngine::spawn(cmd)?;
-
+    let binary = Path::new("./struct-pass");
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
     let binary_is_relocatable = matches!(
         obj_file.kind(),
         object::ObjectKind::Dynamic | object::ObjectKind::Relocatable
     );
+    let dwarf_funcs = get_functions_dwarf(binary.to_str().unwrap())?;
+    debug!(?dwarf_funcs);
+
+    let cmd = Command::new(binary);
+    let (mut engine, child) = ptrace_engine::PtraceEngine::spawn(cmd)?;
+
     let funcs = get_functions(&obj_file);
-    // debug!(?funcs);
+    debug!(?funcs);
 
     let mut global_pid = Pid::from_raw(child.id() as i32);
     let mut funcs_map = HashMap::new();

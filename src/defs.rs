@@ -4,6 +4,8 @@ use std::process::{Child, Command};
 
 use crate::error;
 
+pub use gimli::Register;
+
 pub trait ProcessMem {
     fn read_at(&self, address: u64, data: &mut [u8]) -> io::Result<usize>;
     fn write_at(&mut self, address: u64, data: &[u8]) -> io::Result<usize>;
