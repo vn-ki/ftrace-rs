@@ -78,16 +78,36 @@ where
         }
     }
 
-    fn cs_reg_to_register(reg: &RegId) -> Register {
-        Register(reg.0)
+    fn cs_reg_to_register(reg: &RegId) -> Option<Register> {
+        // TODO: fix this function
+        match reg.0 as u32 {
+            arch::x86::X86Reg::X86_REG_RDI | arch::x86::X86Reg::X86_REG_EDI => {
+                Some(gimli::X86_64::RDI)
+            }
+            arch::x86::X86Reg::X86_REG_RSI => Some(gimli::X86_64::RSI),
+            arch::x86::X86Reg::X86_REG_RDX => Some(gimli::X86_64::RDX),
+            arch::x86::X86Reg::X86_REG_RCX => Some(gimli::X86_64::RCX),
+            _ => None,
+        }
     }
+
+    fn reg_names(cs: &Capstone, regs: &HashSet<RegId>) -> String {
+        let names: Vec<String> = regs.iter().map(|&x| cs.reg_name(x).unwrap()).collect();
+        names.join(", ")
+    }
+
+    let r_n = reg_names(&cs, &arg_regs);
+    debug!(?r_n);
     let args: Vec<_> = arg_regs
         .iter()
-        .map(|reg| {
-            Ok(FormalParameter {
-                name: None,
-                kind: FormalParameterKind::Register(cs_reg_to_register(reg)),
-            })
+        .filter_map(|reg| {
+            if let Some(reg) = cs_reg_to_register(reg) {
+                return Some(Ok(FormalParameter {
+                    name: None,
+                    kind: FormalParameterKind::Register(reg),
+                }));
+            }
+            None
         })
         .collect();
     debug!(?args);

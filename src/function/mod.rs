@@ -25,8 +25,8 @@ pub struct MemoryParam {
 
 #[derive(Debug)]
 pub struct FormalParameter {
-    name: Option<String>,
-    kind: FormalParameterKind,
+    pub name: Option<String>,
+    pub kind: FormalParameterKind,
 }
 
 #[derive(Debug)]

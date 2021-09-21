@@ -6,14 +6,15 @@ use crate::error;
 
 pub use gimli::Register;
 
+// TODO: this and Register both is pretty confusing namingwise
+pub type Registers = nix::libc::user_regs_struct;
+
 pub trait ProcessMem {
     fn read_at(&self, address: u64, data: &mut [u8]) -> io::Result<usize>;
     fn write_at(&mut self, address: u64, data: &[u8]) -> io::Result<usize>;
 }
 
 pub type Result<T> = std::result::Result<T, error::Error>;
-
-pub type Registers = nix::libc::user_regs_struct;
 
 #[derive(Debug)]
 pub struct MemoryRegion {

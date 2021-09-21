@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use defs::ProcessInfo;
+use defs::{ProcessInfo, Registers};
+use gimli::Register;
 use object::Object;
 use ptrace_engine::Process;
 use tracing::{debug, warn};
@@ -17,7 +18,7 @@ mod utils;
 
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::defs::{Pid, Result};
-use crate::function::{get_functions, get_functions_dwarf};
+use crate::function::{get_functions, get_functions_dwarf, FormalParameterKind};
 use crate::utils::get_base_region;
 
 fn main() -> Result<()> {
@@ -67,7 +68,20 @@ fn main() -> Result<()> {
                 debug!(?status);
                 global_pid = pid;
                 if let Some(func) = funcs_map.get(&address) {
-                    println!("{} {:?}", func.name, func.parameters);
+                    let registers = process.get_registers().unwrap();
+                    let params: Vec<String> = func.parameters.iter().map(|param| {
+                        match param {
+                            Ok(param) => {
+                                use FormalParameterKind::*;
+                                match param.kind {
+                                    Register(reg) => format!("{}", get_register(registers, reg)),
+                                    Memory(_) => format!("memory not implemented"),
+                                }
+                            },
+                            Err(_) => "err".to_string()
+                        }
+                    }).collect();
+                    println!("{}({})", func.name, params.join(", "));
                 }
             }
             DebuggerStatus::Exited(_pid, _exit_code) => {
@@ -82,4 +96,17 @@ fn main() -> Result<()> {
         engine.cont(global_pid).unwrap();
     }
     Ok(())
+}
+
+// TODO: find some other place for this func
+fn get_register(registers: Registers, register: Register) -> u64 {
+    match register {
+        gimli::X86_64::RDI => registers.rdi,
+        gimli::X86_64::RSI => registers.rsi,
+        gimli::X86_64::RDX => registers.rdx,
+        gimli::X86_64::RCX => registers.rcx,
+        _ => {
+            panic!("register not found")
+        }
+    }
 }
