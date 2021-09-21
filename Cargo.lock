@@ -30,6 +30,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
+name = "capstone"
+version = "0.10.0"
+dependencies = [
+ "capstone-sys",
+ "libc",
+]
+
+[[package]]
+name = "capstone-sys"
+version = "0.14.0"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -104,6 +120,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "ftrace-rs"
 version = "0.1.0"
 dependencies = [
+ "capstone",
  "ddbug_parser",
  "gimli 0.25.0",
  "nix",

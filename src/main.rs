@@ -23,7 +23,7 @@ use crate::utils::get_base_region;
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let binary = Path::new("./struct-pass");
+    let binary = Path::new("./fact-pie");
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
     let binary_is_relocatable = matches!(
@@ -67,7 +67,7 @@ fn main() -> Result<()> {
                 debug!(?status);
                 global_pid = pid;
                 if let Some(func) = funcs_map.get(&address) {
-                    println!("{}", func.name);
+                    println!("{} {:?}", func.name, func.parameters);
                 }
             }
             DebuggerStatus::Exited(_pid, _exit_code) => {
