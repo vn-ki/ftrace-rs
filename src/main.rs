@@ -11,13 +11,13 @@ use tracing_subscriber;
 mod breakpoint;
 mod defs;
 mod error;
-mod obj_helper;
+mod function;
 mod ptrace_engine;
 mod utils;
 
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::defs::{Pid, Result};
-use crate::obj_helper::{get_functions, get_functions_dwarf};
+use crate::function::{get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
 fn main() -> Result<()> {
@@ -83,15 +83,3 @@ fn main() -> Result<()> {
     }
     Ok(())
 }
-
-// type FunctionArgs = Vec<u64>;
-//
-// fn get_function_args(process: &Process, n_args: usize) -> FunctionArgs {
-//     let regs = process.get_registers().unwrap();
-//     // system-V abi
-//     // RDI, RSI, RDX, RCX, R8, R9, [XYZ]MM0–7
-//     let mut args = Vec::with_capacity(n_args);
-//     let reg_args = &[regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9];
-//     args.extend_from_slice(&reg_args[0..n_args]);
-//     args
-// }
