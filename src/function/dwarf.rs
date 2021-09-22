@@ -23,6 +23,7 @@ pub fn get_functions_dwarf(filename: &str) -> crate::defs::Result<Vec<Function>>
                             name: name.to_string(),
                             parameters: params,
                             address,
+                            return_type: None,
                         })
                     }
                 }

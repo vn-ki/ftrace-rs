@@ -24,6 +24,7 @@ pub fn get_functions<'a>(obj: &'a object::File) -> Vec<Function> {
                         // TODO: fix this
                         name: func_name.into(),
                         parameters: params,
+                        return_type: Some(FormalParameterKind::Register(gimli::X86_64::RAX))
                     });
                 }
                 _ => {}
@@ -91,13 +92,6 @@ where
         }
     }
 
-    fn reg_names(cs: &Capstone, regs: &HashSet<RegId>) -> String {
-        let names: Vec<String> = regs.iter().map(|&x| cs.reg_name(x).unwrap()).collect();
-        names.join(", ")
-    }
-
-    let r_n = reg_names(&cs, &arg_regs);
-    debug!(?r_n);
     let args: Vec<_> = arg_regs
         .iter()
         .filter_map(|reg| {

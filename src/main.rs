@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use defs::{ProcessInfo, Registers};
+use defs::{ProcessInfo, ProcessMem, Registers};
+use error::ParamFindingFailure;
+use function::FormalParameter;
 use gimli::Register;
 use object::Object;
 use ptrace_engine::Process;
@@ -60,6 +62,7 @@ fn main() -> Result<()> {
         funcs_map.insert(bp_addr, func);
     }
     engine.cont(global_pid)?;
+    let mut depth = 0;
 
     // TODO: this wait and cont thingy is kinda falky
     while let Ok(status) = engine.wait() {
@@ -67,21 +70,31 @@ fn main() -> Result<()> {
             DebuggerStatus::BreakpointHit(pid, address) => {
                 debug!(?status);
                 global_pid = pid;
+                let mut process = Process(pid);
                 if let Some(func) = funcs_map.get(&address) {
+                    depth += 1;
                     let registers = process.get_registers().unwrap();
-                    let params: Vec<String> = func.parameters.iter().map(|param| {
-                        match param {
-                            Ok(param) => {
-                                use FormalParameterKind::*;
-                                match param.kind {
-                                    Register(reg) => format!("{}", get_register(registers, reg)),
-                                    Memory(_) => format!("memory not implemented"),
-                                }
-                            },
-                            Err(_) => "err".to_string()
-                        }
-                    }).collect();
-                    println!("{}({})", func.name, params.join(", "));
+                    let params = get_func_params(&func.parameters, &mut process)?;
+                    println!(
+                        "{}{}({})",
+                        str::repeat("| ", depth),
+                        func.name,
+                        params.join(", ")
+                    );
+                    let ret_addr = {
+                        let mut ret_addr: [u8; 8] = [0; 8];
+                        process.read_at(registers.rsp, &mut ret_addr)?;
+                        u64::from_le_bytes(ret_addr)
+                    };
+                    if ret_addr > 1 {
+                        // println!("{:0x}", ret_addr);
+                        engine.set_breakpoint(pid, ret_addr)?;
+                    }
+                } else {
+                    // TODO: this is the ret this should be better lol
+                    let registers = process.get_registers().unwrap();
+                    println!("{}{}", str::repeat("| ", depth), registers.rax);
+                    depth -= 1;
                 }
             }
             DebuggerStatus::Exited(_pid, _exit_code) => {
@@ -96,6 +109,26 @@ fn main() -> Result<()> {
         engine.cont(global_pid).unwrap();
     }
     Ok(())
+}
+
+fn get_func_params<P: ProcessMem + ProcessInfo>(
+    params: &[std::result::Result<FormalParameter, ParamFindingFailure>],
+    process: &mut P,
+) -> Result<Vec<String>> {
+    let registers = process.get_registers()?;
+    Ok(params
+        .iter()
+        .map(|param| match param {
+            Ok(param) => {
+                use FormalParameterKind::*;
+                match param.kind {
+                    Register(reg) => format!("{}", get_register(registers, reg)),
+                    Memory(_) => format!("memory not implemented"),
+                }
+            }
+            Err(_) => "err".to_string(),
+        })
+        .collect())
 }
 
 // TODO: find some other place for this func

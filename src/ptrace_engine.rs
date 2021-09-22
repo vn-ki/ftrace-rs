@@ -27,6 +27,9 @@ pub struct PtraceEngine {
 
 impl DebuggerEngine for PtraceEngine {
     fn set_breakpoint(&mut self, pid: Pid, address: u64) -> Result<()> {
+        if self.breakpoints.get(&address).is_some() {
+            return Ok(());
+        }
         let process = &mut Process(pid);
         let mut bp = Breakpoint::new(address);
         bp.enable(process)?;

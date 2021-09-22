@@ -12,6 +12,7 @@ pub struct Function {
     pub address: u64,
     pub name: String,
     pub parameters: Vec<std::result::Result<FormalParameter, ParamFindingFailure>>,
+    pub return_type: Option<FormalParameterKind>,
 }
 
 #[derive(Debug)]
@@ -30,6 +31,7 @@ pub struct FormalParameter {
 }
 
 #[derive(Debug)]
+// TODO: rename FormalParameterKind to SourceKind
 pub enum FormalParameterKind {
     /// Parameter is stored in memory
     Memory(MemoryParam),
