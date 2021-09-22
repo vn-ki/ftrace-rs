@@ -2,10 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use defs::{ProcessInfo, ProcessMem, Registers};
-use error::ParamFindingFailure;
-use function::FormalParameter;
-use gimli::Register;
+use defs::{ProcessInfo, ProcessMem};
+use process_ext::ProcessExt;
 use object::Object;
 use ptrace_engine::Process;
 use tracing::{debug, warn};
@@ -17,10 +15,11 @@ mod error;
 mod function;
 mod ptrace_engine;
 mod utils;
+mod process_ext;
 
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::defs::{Pid, Result};
-use crate::function::{get_functions, get_functions_dwarf, FormalParameterKind};
+use crate::function::{get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
 fn main() -> Result<()> {
@@ -70,11 +69,11 @@ fn main() -> Result<()> {
             DebuggerStatus::BreakpointHit(pid, address) => {
                 debug!(?status);
                 global_pid = pid;
-                let mut process = Process(pid);
+                let process = Process(pid);
                 if let Some(func) = funcs_map.get(&address) {
                     depth += 1;
                     let registers = process.get_registers().unwrap();
-                    let params = get_func_params(&func.parameters, &mut process)?;
+                    let params = process.get_fn_param_values(&func.parameters)?;
                     println!(
                         "{}{}({})",
                         str::repeat("| ", depth),
@@ -109,37 +108,4 @@ fn main() -> Result<()> {
         engine.cont(global_pid).unwrap();
     }
     Ok(())
-}
-
-fn get_func_params<P: ProcessMem + ProcessInfo>(
-    params: &[std::result::Result<FormalParameter, ParamFindingFailure>],
-    process: &mut P,
-) -> Result<Vec<String>> {
-    let registers = process.get_registers()?;
-    Ok(params
-        .iter()
-        .map(|param| match param {
-            Ok(param) => {
-                use FormalParameterKind::*;
-                match param.kind {
-                    Register(reg) => format!("{}", get_register(registers, reg)),
-                    Memory(_) => format!("memory not implemented"),
-                }
-            }
-            Err(_) => "err".to_string(),
-        })
-        .collect())
-}
-
-// TODO: find some other place for this func
-fn get_register(registers: Registers, register: Register) -> u64 {
-    match register {
-        gimli::X86_64::RDI => registers.rdi,
-        gimli::X86_64::RSI => registers.rsi,
-        gimli::X86_64::RDX => registers.rdx,
-        gimli::X86_64::RCX => registers.rcx,
-        _ => {
-            panic!("register not found")
-        }
-    }
 }
