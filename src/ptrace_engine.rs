@@ -26,22 +26,24 @@ pub struct PtraceEngine {
 }
 
 impl DebuggerEngine for PtraceEngine {
-    fn set_breakpoint(&mut self, pid: Pid, address: u64) -> Result<()> {
+    type Process = Process;
+
+    fn set_breakpoint(&mut self, process: &mut Process, address: u64) -> Result<()> {
         if self.breakpoints.get(&address).is_some() {
             return Ok(());
         }
-        let process = &mut Process(pid);
         let mut bp = Breakpoint::new(address);
         bp.enable(process)?;
         self.breakpoints.insert(address, bp);
         Ok(())
     }
 
-    fn cont(&mut self, pid: Pid) -> Result<()> {
-        if let Some(bp) = self.get_breakpoint(pid)? {
+    fn cont(&mut self, process: &mut Self::Process) -> Result<()> {
+        let pid = process.0;
+        if let Some(bp) = self.get_breakpoint(process)? {
             ptrace::step(pid, None)?;
             let _status = wait::waitpid(pid, None)?;
-            bp.enable(&mut Process(pid))?;
+            bp.enable(process)?;
         }
         ptrace::cont(pid, None)?;
         Ok(())
@@ -54,17 +56,17 @@ impl DebuggerEngine for PtraceEngine {
     //     Ok(())
     // }
 
-    fn spawn(cmd: Command) -> Result<(Self, Child)> {
+    fn spawn(cmd: Command) -> Result<(Self, Process)> {
         let child = Self::spawn_cmd(cmd)?;
         Ok((
             Self {
                 breakpoints: HashMap::new(),
             },
-            child,
+            Process(Pid::from_raw(child.id() as i32)),
         ))
     }
 
-    fn wait(&mut self) -> Result<DebuggerStatus> {
+    fn wait(&mut self) -> Result<DebuggerStatus<Process>> {
         // XXX: the issue with seperating wait from cont and wait
         // is that step and cont must be followed by wait
         self.handle_wait(wait::waitpid(None, Some(WaitPidFlag::__WALL))?)
@@ -72,36 +74,36 @@ impl DebuggerEngine for PtraceEngine {
 }
 
 impl PtraceEngine {
-    pub fn get_breakpoint(&mut self, pid: Pid) -> Result<Option<&mut Breakpoint>> {
-        let regs = Process(pid).get_registers()?;
+    pub fn get_breakpoint(&mut self, process: &Process) -> Result<Option<&mut Breakpoint>> {
+        let regs = process.get_registers()?;
         Ok(self.breakpoints.get_mut(&regs.rip))
     }
 
-    pub fn handle_wait(&mut self, status: WaitStatus) -> Result<DebuggerStatus> {
+    pub fn handle_wait(&mut self, status: WaitStatus) -> Result<DebuggerStatus<Process>> {
         use nix::sys::signal::Signal::*;
         match status {
             WaitStatus::Stopped(pid, SIGTRAP) => {
                 // debug!(?status);
-                let process = &mut Process(pid);
+                let mut process = Process(pid);
                 let mut regs = process.get_registers()?;
                 let bp_addr = regs.rip - Breakpoint::instr_len();
 
                 if let Some(bp) = self.breakpoints.get_mut(&bp_addr) {
-                    bp.disable(process)?;
+                    bp.disable(&mut process)?;
                     regs.rip -= Breakpoint::instr_len();
                     process.set_registers(regs)?;
-                    return Ok(DebuggerStatus::BreakpointHit(pid, bp_addr));
+                    return Ok(DebuggerStatus::BreakpointHit(process, bp_addr));
                 }
                 debug!(?regs, "did not find a breakpoint, still got a sigtrap");
-                Ok(DebuggerStatus::Stopped(pid))
+                Ok(DebuggerStatus::Stopped(process))
             }
             WaitStatus::Stopped(pid, SIGSEGV) => {
                 debug!(?status);
-                Ok(DebuggerStatus::Stopped(pid))
+                Ok(DebuggerStatus::Stopped(Process(pid)))
             }
             WaitStatus::Exited(pid, exit_code) => {
                 debug!("process with pid {} exited with code {}", pid, exit_code);
-                Ok(DebuggerStatus::Exited(pid, exit_code))
+                Ok(DebuggerStatus::Exited(Process(pid), exit_code))
             }
             _ => {
                 debug!(?status);
@@ -119,6 +121,7 @@ impl PtraceEngine {
     }
 }
 
+#[derive(Debug)]
 pub struct Process(pub Pid);
 
 impl Process {

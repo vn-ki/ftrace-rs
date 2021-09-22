@@ -44,24 +44,28 @@ pub trait ProcessInfo {
 pub type Pid = nix::unistd::Pid;
 
 #[derive(Debug)]
-pub enum DebuggerStatus {
+pub enum DebuggerStatus<P: ProcessInfo> {
     /// Breakpoint hit for the Pid at address u64
-    BreakpointHit(Pid, u64),
+    BreakpointHit(P, u64),
     /// Stopeed for some reason
     // TODO: add reason
-    Stopped(Pid),
+    Stopped(P),
     /// Exited(Pid, exit_code)
-    Exited(Pid, i32),
+    Exited(P, i32),
     /// Some unknown status
     Unknown,
 }
 
 pub trait DebuggerEngine {
-    fn spawn(cmd: Command) -> Result<(Self, Child)>
+    type Process;
+
+    fn spawn(cmd: Command) -> Result<(Self, Self::Process)>
     where
         Self: Sized;
-    fn set_breakpoint(&mut self, pid: Pid, address: u64) -> Result<()>;
-    fn cont(&mut self, pid: Pid) -> Result<()>;
+    fn set_breakpoint(&mut self, pid: &mut Self::Process, address: u64) -> Result<()>;
+    fn cont(&mut self, pid: &mut Self::Process) -> Result<()>;
     // fn step(&mut self, pid: Pid) -> Result<()>;
-    fn wait(&mut self) -> Result<DebuggerStatus>;
+    fn wait(&mut self) -> Result<DebuggerStatus<Self::Process>>
+    where
+        Self::Process: ProcessInfo;
 }

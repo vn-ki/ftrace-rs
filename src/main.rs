@@ -36,16 +36,14 @@ fn main() -> Result<()> {
     debug!(?dwarf_funcs);
 
     let cmd = Command::new(binary);
-    let (mut engine, child) = ptrace_engine::PtraceEngine::spawn(cmd)?;
+    let (mut engine, mut last_process) = ptrace_engine::PtraceEngine::spawn(cmd)?;
 
     let funcs = get_functions(&obj_file);
     debug!(?funcs);
 
-    let mut global_pid = Pid::from_raw(child.id() as i32);
     let mut funcs_map = HashMap::new();
 
-    let process = &mut Process(global_pid);
-    let maps = process.get_memory_maps()?;
+    let maps = last_process.get_memory_maps()?;
     debug!(?maps);
     let base_region = get_base_region(&maps, binary.canonicalize()?.to_str().unwrap()).unwrap();
     debug!(?binary_is_relocatable, ?base_region);
@@ -57,23 +55,22 @@ fn main() -> Result<()> {
             func.address
         };
         debug!("breakpoint set at {}", bp_addr);
-        engine.set_breakpoint(global_pid, bp_addr)?;
+        engine.set_breakpoint(&mut last_process, bp_addr)?;
         funcs_map.insert(bp_addr, func);
     }
-    engine.cont(global_pid)?;
+    engine.cont(&mut last_process)?;
     let mut depth = 0;
 
     // TODO: this wait and cont thingy is kinda falky
     while let Ok(status) = engine.wait() {
+        debug!(?status);
         match status {
-            DebuggerStatus::BreakpointHit(pid, address) => {
-                debug!(?status);
-                global_pid = pid;
-                let process = Process(pid);
+            DebuggerStatus::BreakpointHit(process, address) => {
+                last_process = process;
                 if let Some(func) = funcs_map.get(&address) {
                     depth += 1;
-                    let registers = process.get_registers().unwrap();
-                    let params = process.get_fn_param_values(&func.parameters)?;
+                    let registers = last_process.get_registers().unwrap();
+                    let params = last_process.get_fn_param_values(&func.parameters)?;
                     println!(
                         "{}{}({})",
                         str::repeat("| ", depth),
@@ -82,16 +79,16 @@ fn main() -> Result<()> {
                     );
                     let ret_addr = {
                         let mut ret_addr: [u8; 8] = [0; 8];
-                        process.read_at(registers.rsp, &mut ret_addr)?;
+                        last_process.read_at(registers.rsp, &mut ret_addr)?;
                         u64::from_le_bytes(ret_addr)
                     };
                     if ret_addr > 1 {
                         // println!("{:0x}", ret_addr);
-                        engine.set_breakpoint(pid, ret_addr)?;
+                        engine.set_breakpoint(&mut last_process, ret_addr)?;
                     }
                 } else {
                     // TODO: this is the ret this should be better lol
-                    let registers = process.get_registers().unwrap();
+                    let registers = last_process.get_registers().unwrap();
                     println!("{}{}", str::repeat("| ", depth), registers.rax);
                     depth -= 1;
                 }
@@ -105,7 +102,7 @@ fn main() -> Result<()> {
             }
             _ => {}
         }
-        engine.cont(global_pid).unwrap();
+        engine.cont(&mut last_process).unwrap();
     }
     Ok(())
 }
