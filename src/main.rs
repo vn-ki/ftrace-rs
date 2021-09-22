@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use defs::{ProcessInfo, ProcessMem};
+use defs::ProcessInfo;
 use process_ext::ProcessExt;
 use object::Object;
 use ptrace_engine::Process;

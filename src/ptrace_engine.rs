@@ -17,7 +17,7 @@ use tracing::debug;
 
 use crate::breakpoint::Breakpoint;
 use crate::defs::{
-    DebuggerEngine, DebuggerStatus, MemoryRegion, ProcessInfo, ProcessMem, Registers, Result,
+    DebuggerEngine, DebuggerStatus, MemoryRegion, ProcessInfo, Registers, Result,
 };
 use crate::utils::parse_address_without_0x;
 
@@ -185,9 +185,7 @@ impl ProcessInfo for Process {
             .map(Self::vmmap_line_to_region)
             .collect())
     }
-}
 
-impl ProcessMem for Process {
     fn read_at(&self, address: u64, data: &mut [u8]) -> std::io::Result<usize> {
         std::fs::File::open(self.proc_mem_path())?.read_at(data, address)
     }

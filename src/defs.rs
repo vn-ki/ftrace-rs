@@ -9,11 +9,6 @@ pub use gimli::Register;
 // TODO: this and Register both is pretty confusing namingwise
 pub type Registers = nix::libc::user_regs_struct;
 
-pub trait ProcessMem {
-    fn read_at(&self, address: u64, data: &mut [u8]) -> io::Result<usize>;
-    fn write_at(&mut self, address: u64, data: &[u8]) -> io::Result<usize>;
-}
-
 pub type Result<T> = std::result::Result<T, error::Error>;
 
 #[derive(Debug)]
@@ -37,6 +32,12 @@ pub trait ProcessInfo {
     /// Sets the registers of the process
     // TODO: should this be DebuggerEngine?
     fn set_registers(&self, regs: Registers) -> Result<()>;
+
+    /// Read memory at address
+    fn read_at(&self, address: u64, data: &mut [u8]) -> io::Result<usize>;
+
+    /// Write memory at address
+    fn write_at(&mut self, address: u64, data: &[u8]) -> io::Result<usize>;
 }
 
 #[cfg(unix)]

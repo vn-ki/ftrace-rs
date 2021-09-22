@@ -1,4 +1,4 @@
-use crate::defs::{Result, ProcessMem};
+use crate::defs::{Result, ProcessInfo};
 
 #[derive(Debug)]
 pub struct Breakpoint {
@@ -14,7 +14,7 @@ impl<'a> Breakpoint {
         Self { address, old_data: 0, }
     }
 
-    pub fn enable<T: ProcessMem>(&mut self, tracee: &'a mut T) -> Result<()> {
+    pub fn enable<T: ProcessInfo>(&mut self, tracee: &'a mut T) -> Result<()> {
         let mut mem: [u8; 1] = [0];
         tracee.read_at(self.address, &mut mem)?;
         self.old_data = mem[0];
@@ -22,7 +22,7 @@ impl<'a> Breakpoint {
         Ok(())
     }
 
-    pub fn disable<T: ProcessMem>(&mut self, tracee: &'a mut T) -> Result<()> {
+    pub fn disable<T: ProcessInfo>(&mut self, tracee: &'a mut T) -> Result<()> {
         tracee.write_at(self.address, &[self.old_data])?;
         Ok(())
     }

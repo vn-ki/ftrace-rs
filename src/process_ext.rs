@@ -1,6 +1,6 @@
 use crate::function::{FormalParameter, FormalParameterKind};
 use crate::{
-    defs::{ProcessInfo, ProcessMem, Register, Registers, Result},
+    defs::{ProcessInfo, Register, Registers, Result},
     error::ParamFindingFailure,
 };
 
@@ -12,7 +12,7 @@ pub trait ProcessExt {
     ) -> Result<Vec<String>>;
 }
 
-impl<T: ProcessMem + ProcessInfo> ProcessExt for T {
+impl<T: ProcessInfo> ProcessExt for T {
     fn get_fn_param_values(
         &self,
         params: &[std::result::Result<FormalParameter, ParamFindingFailure>],
