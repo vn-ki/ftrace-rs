@@ -21,6 +21,7 @@ pub fn get_functions<'a>(obj: &'a object::File) -> Vec<Function> {
                     let params = get_fn_params_heuristic(obj, &symbol).unwrap();
                     funcs.push(Function {
                         address: symbol.address(),
+                        prologue_end_addr: None,
                         // TODO: fix this
                         name: func_name.into(),
                         parameters: params,

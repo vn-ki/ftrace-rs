@@ -10,6 +10,7 @@ pub use heuristic::get_functions;
 #[derive(Debug)]
 pub struct Function {
     pub address: u64,
+    pub prologue_end_addr: Option<u64>,
     pub name: String,
     pub parameters: Vec<std::result::Result<FormalParameter, ParamFindingFailure>>,
     pub return_type: Option<FormalParameterKind>,

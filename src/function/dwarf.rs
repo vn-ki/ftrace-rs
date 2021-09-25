@@ -1,4 +1,4 @@
-use gimli::{AttributeValue, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DebugInfo};
+use gimli::{AttributeValue, DW_AT_high_pc, DW_AT_low_pc};
 use object::{Object, ObjectSection};
 use tracing::debug;
 
@@ -7,7 +7,8 @@ use crate::function::{
 };
 use ddbug_parser::FileHash;
 
-pub fn get_functions_dwarf(filename: &str) -> crate::defs::Result<Vec<Function>> {
+pub fn get_functions_dwarf(filename: &str, obj: &object::File) -> crate::defs::Result<Vec<Function>> {
+    let line_bp = dwarf_get_line_breakpoints(obj)?;
     let mut funcs = Vec::new();
     ddbug_parser::File::parse(filename, |file| {
         let file_hash = FileHash::new(file);
@@ -25,6 +26,7 @@ pub fn get_functions_dwarf(filename: &str) -> crate::defs::Result<Vec<Function>>
                             name: name.to_string(),
                             parameters: params,
                             address,
+                            prologue_end_addr: line_bp.get(&address).map(|x| *x),
                             return_type: None,
                         })
                     }

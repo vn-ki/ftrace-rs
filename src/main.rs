@@ -22,7 +22,7 @@ mod utils;
 
 use crate::defs::Result;
 use crate::defs::{DebuggerEngine, DebuggerStatus};
-use crate::function::{dwarf_get_line_breakpoints, get_functions, get_functions_dwarf};
+use crate::function::{get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
 #[derive(Clap)]
@@ -39,9 +39,8 @@ fn main() -> Result<()> {
 
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
-    let dwarf_funcs = get_functions_dwarf(binary.to_str().unwrap())?;
+    let dwarf_funcs = get_functions_dwarf(binary.to_str().unwrap(), &obj_file)?;
     debug!(?dwarf_funcs);
-    let line_bp = dwarf_get_line_breakpoints(&obj_file)?;
 
     let binary_is_relocatable = matches!(
         obj_file.kind(),
@@ -55,9 +54,11 @@ fn main() -> Result<()> {
     let base_region = get_base_region(&maps, binary.canonicalize()?.to_str().unwrap()).unwrap();
     debug!(?maps, ?binary_is_relocatable, ?base_region);
 
-    let mut funcs = get_functions(&obj_file);
+    let obj_funcs = get_functions(&obj_file);
+    let mut funcs = dwarf_funcs;
     if binary_is_relocatable {
         for mut func in funcs.iter_mut() {
+            func.prologue_end_addr = func.prologue_end_addr.map(|x| x + base_region.start);
             func.address += base_region.start;
         }
     }
@@ -77,17 +78,24 @@ where
     E::Process: ProcessInfo + Debug,
 {
     let mut funcs_map = HashMap::new();
+    let mut funcs_prologue_map = HashMap::new();
 
     for mut func in funcs.into_iter() {
-        let bp_addr = func.address;
         func.name = match Symbol::new(&func.name).map(|op| op.to_string()) {
             Ok(name) => name,
             // rustc demangle will return the original if it cant parser
             Err(_) => rustc_demangle::demangle(&func.name).to_string(),
         };
+        let bp_addr = if let Some(start) = func.prologue_end_addr {
+            funcs_prologue_map.insert(start, func);
+            start
+        } else {
+            let addr = func.address;
+            funcs_map.insert(func.address, func);
+            addr
+        };
         debug!("breakpoint set at {}", bp_addr);
         engine.set_breakpoint(&mut last_process, bp_addr)?;
-        funcs_map.insert(bp_addr, func);
     }
     engine.cont(&mut last_process)?;
     let mut depth = 0;
@@ -101,21 +109,19 @@ where
                 if let Some(func) = funcs_map.get(&address) {
                     depth += 1;
                     let registers = last_process.get_registers().unwrap();
-                    let params = last_process.get_fn_param_values(&func.parameters)?;
-
-                    println!(
-                        "{}{}({})",
-                        str::repeat("| ", depth),
-                        func.name,
-                        params.join(", ")
-                    );
-                    let ret_addr = {
-                        let mut ret_addr: [u8; 8] = [0; 8];
-                        last_process.read_at(registers.rsp, &mut ret_addr)?;
-                        u64::from_le_bytes(ret_addr)
-                    };
+                    print_function(&last_process, func, depth)?;
+                    let ret_addr = last_process.read_u64_at(registers.rsp)?;
                     if ret_addr > 1 {
                         // println!("{:0x}", ret_addr);
+                        engine.set_breakpoint(&mut last_process, ret_addr)?;
+                    }
+                } else if let Some(func) = funcs_prologue_map.get(&address) {
+                    depth += 1;
+                    let registers = last_process.get_registers().unwrap();
+                    print_function(&last_process, func, depth)?;
+                    let base_ptr = last_process.read_u64_at(registers.rbp)?;
+                    if base_ptr > 1 {
+                        let ret_addr = last_process.read_u64_at(base_ptr + 8)?;
                         engine.set_breakpoint(&mut last_process, ret_addr)?;
                     }
                 } else {
@@ -136,5 +142,21 @@ where
         }
         engine.cont(&mut last_process).unwrap();
     }
+    Ok(())
+}
+
+fn print_function<P: ProcessInfo>(
+    process: &P,
+    func: &function::Function,
+    depth: usize,
+) -> Result<()> {
+    let params = process.get_fn_param_values(&func.parameters)?;
+
+    println!(
+        "{}{}({})",
+        str::repeat("| ", depth),
+        func.name,
+        params.join(", ")
+    );
     Ok(())
 }

@@ -10,6 +10,9 @@ pub trait ProcessExt {
         &self,
         params: &[std::result::Result<FormalParameter, ParamFindingFailure>],
     ) -> Result<Vec<String>>;
+
+    // TODO: can i make u64 generic?
+    fn read_u64_at(&self, addr: u64) -> Result<u64>;
 }
 
 impl<T: ProcessInfo> ProcessExt for T {
@@ -31,6 +34,12 @@ impl<T: ProcessInfo> ProcessExt for T {
                 Err(_) => "err".to_string(),
             })
             .collect())
+    }
+
+    fn read_u64_at(&self, addr: u64) -> Result<u64> {
+        let mut ret_addr: [u8; 8] = [0; 8];
+        self.read_at(addr, &mut ret_addr)?;
+        Ok(u64::from_le_bytes(ret_addr))
     }
 }
 
