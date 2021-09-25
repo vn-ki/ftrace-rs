@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::path::Path;
 use std::process::Command;
 
@@ -30,33 +31,47 @@ fn main() -> Result<()> {
 
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
-    let binary_is_relocatable = matches!(
-        obj_file.kind(),
-        object::ObjectKind::Dynamic | object::ObjectKind::Relocatable
-    );
     let dwarf_funcs = get_functions_dwarf(binary.to_str().unwrap())?;
     debug!(?dwarf_funcs);
     let line_bp = dwarf_get_line_breakpoints(&obj_file)?;
 
+    let binary_is_relocatable = matches!(
+        obj_file.kind(),
+        object::ObjectKind::Dynamic | object::ObjectKind::Relocatable
+    );
+
     let cmd = Command::new(binary);
-    let (mut engine, mut last_process) = ptrace_engine::PtraceEngine::spawn(cmd)?;
-
-    let funcs = get_functions(&obj_file);
-    debug!(?funcs);
-
-    let mut funcs_map = HashMap::new();
+    let (engine, last_process) = ptrace_engine::PtraceEngine::spawn(cmd)?;
 
     let maps = last_process.get_memory_maps()?;
-    debug!(?maps);
     let base_region = get_base_region(&maps, binary.canonicalize()?.to_str().unwrap()).unwrap();
-    debug!(?binary_is_relocatable, ?base_region);
+    debug!(?maps, ?binary_is_relocatable, ?base_region);
+
+    let mut funcs = get_functions(&obj_file);
+    if binary_is_relocatable {
+        for mut func in funcs.iter_mut() {
+            func.address += base_region.start;
+        }
+    }
+    debug!(?funcs);
+
+    start_trace(engine, last_process, funcs)?;
+    Ok(())
+}
+
+fn start_trace<E>(
+    mut engine: E,
+    mut last_process: E::Process,
+    funcs: Vec<function::Function>,
+) -> Result<()>
+where
+    E: DebuggerEngine,
+    E::Process: ProcessInfo + Debug,
+{
+    let mut funcs_map = HashMap::new();
 
     for mut func in funcs.into_iter() {
-        let bp_addr = if binary_is_relocatable {
-            base_region.start + func.address
-        } else {
-            func.address
-        };
+        let bp_addr = func.address;
         func.name = match Symbol::new(&func.name).map(|op| op.to_string()) {
             Ok(name) => name,
             // rustc demangle will return the original if it cant parser

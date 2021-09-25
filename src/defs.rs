@@ -1,6 +1,6 @@
 use std::io;
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::Command;
 
 use crate::error;
 
@@ -39,9 +39,6 @@ pub trait ProcessInfo {
     /// Write memory at address
     fn write_at(&mut self, address: u64, data: &[u8]) -> io::Result<usize>;
 }
-
-#[cfg(unix)]
-pub type Pid = nix::unistd::Pid;
 
 #[derive(Debug)]
 pub enum DebuggerStatus<P: ProcessInfo> {
