@@ -99,6 +99,7 @@ where
                 return Some(Ok(FormalParameter {
                     name: None,
                     kind: FormalParameterKind::Register(reg),
+                    ty: None,
                 }));
             }
             None

@@ -28,6 +28,7 @@ pub struct MemoryParam {
 pub struct FormalParameter {
     pub name: Option<String>,
     pub kind: FormalParameterKind,
+    pub ty: Option<TypeKind>,
 }
 
 #[derive(Debug)]
@@ -38,4 +39,23 @@ pub enum FormalParameterKind {
     /// Parameter is stored in registers
     Register(Register),
     // TODO: structs passed by value will have the values in multiple regs
+}
+
+#[derive(Debug)]
+pub enum TypeKind {
+    Void,
+    BaseType(BaseType),
+}
+
+#[derive(Debug)]
+pub struct BaseType {
+    pub size: u64,
+    pub encoding: BaseTypeEncoding,
+    // TODO: add endianess and encoding
+}
+
+#[derive(Debug)]
+pub enum BaseTypeEncoding {
+    Address,
+    Unsigned,
 }

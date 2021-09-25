@@ -48,6 +48,7 @@ fn parse_dwarf_param(
         return Ok(FormalParameter {
             name: param.name().map(|s| s.to_string()),
             kind: FormalParameterKind::Register(Register(regs[0].1 .0)),
+            ty: ddbug_type_to_type(&param.ty(file).map(|x| x.into_owned())),
         });
     }
     let fl: Vec<_> = param.frame_locations().collect();
@@ -61,6 +62,7 @@ fn parse_dwarf_param(
                     offset: fl[0].offset,
                     size,
                 }),
+                ty: ddbug_type_to_type(&param.ty(file).map(|x| x.into_owned())),
             });
         }
         return Err(ParamFindingFailure::DwarfNoSize);
@@ -68,7 +70,23 @@ fn parse_dwarf_param(
     Err(ParamFindingFailure::DwarfNoFrameLocNoReg)
 }
 
+fn ddbug_type_to_type(ty: &Option<ddbug_parser::Type>) -> Option<TypeKind> {
+    if let Some(ty) = ty {
+        return match ty.kind() {
+            ddbug_parser::TypeKind::Void => Some(TypeKind::Void),
+            ddbug_parser::TypeKind::Base(b) => Some(TypeKind::BaseType(BaseType {
+                size: b.byte_size().unwrap(),
+                encoding: super::BaseTypeEncoding::Unsigned,
+            })),
+            _ => None,
+        };
+    }
+    None
+}
+
 use std::{borrow, collections::HashMap};
+
+use super::{BaseType, TypeKind};
 
 // TODO: This entire function is a big hack
 // beef up this func and remove ddbug dep
