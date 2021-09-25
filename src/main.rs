@@ -3,8 +3,8 @@ use std::path::Path;
 use std::process::Command;
 
 use defs::ProcessInfo;
-use process_ext::ProcessExt;
 use object::Object;
+use process_ext::ProcessExt;
 use ptrace_engine::Process;
 use tracing::{debug, warn};
 use tracing_subscriber;
@@ -13,19 +13,19 @@ mod breakpoint;
 mod defs;
 mod error;
 mod function;
+mod process_ext;
 mod ptrace_engine;
 mod utils;
-mod process_ext;
 
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::defs::{Pid, Result};
-use crate::function::{get_functions, get_functions_dwarf};
+use crate::function::{dwarf_get_line_breakpoints, get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let binary = Path::new("./fact-pie");
+    let binary = Path::new("./fact");
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
     let binary_is_relocatable = matches!(
@@ -34,6 +34,7 @@ fn main() -> Result<()> {
     );
     let dwarf_funcs = get_functions_dwarf(binary.to_str().unwrap())?;
     debug!(?dwarf_funcs);
+    let line_bp = dwarf_get_line_breakpoints(&obj_file)?;
 
     let cmd = Command::new(binary);
     let (mut engine, mut last_process) = ptrace_engine::PtraceEngine::spawn(cmd)?;

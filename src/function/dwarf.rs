@@ -1,3 +1,5 @@
+use gimli::{AttributeValue, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DebugInfo};
+use object::{Object, ObjectSection};
 use tracing::debug;
 
 use crate::function::{
@@ -64,4 +66,86 @@ fn parse_dwarf_param(
         return Err(ParamFindingFailure::DwarfNoSize);
     }
     Err(ParamFindingFailure::DwarfNoFrameLocNoReg)
+}
+
+use std::{borrow, collections::HashMap};
+
+// TODO: This entire function is a big hack
+// beef up this func and remove ddbug dep
+// research on how to actually get to the breakpoint line info from a function DIE
+pub fn dwarf_get_line_breakpoints(obj: &object::File) -> crate::defs::Result<HashMap<u64, u64>> {
+    let load_section = |id: gimli::SectionId| -> Result<borrow::Cow<[u8]>, gimli::Error> {
+        match obj.section_by_name(id.name()) {
+            Some(ref section) => Ok(section
+                .uncompressed_data()
+                .unwrap_or(borrow::Cow::Borrowed(&[][..]))),
+            None => Ok(borrow::Cow::Borrowed(&[][..])),
+        }
+    };
+
+    // Load all of the sections.
+    let dwarf_cow = gimli::Dwarf::load(&load_section)?;
+    let borrow_section: &dyn for<'a> Fn(
+        &'a borrow::Cow<[u8]>,
+    ) -> gimli::EndianSlice<'a, gimli::RunTimeEndian> =
+        &|section| gimli::EndianSlice::new(&*section, gimli::RunTimeEndian::Little);
+
+    // Create `EndianSlice`s for all of the sections.
+    let dwarf = dwarf_cow.borrow(&borrow_section);
+
+    let mut iter = dwarf.units();
+    let mut bp_map = HashMap::new();
+    while let Some(header) = iter.next()? {
+        let unit = dwarf.unit(header)?;
+        let mut breakpoint_addrs = vec![];
+        if let Some(line_program) = unit.line_program.clone() {
+            let mut rows = line_program.rows();
+            while let Some((_, row)) = rows.next_row()? {
+                if row.is_stmt() {
+                    breakpoint_addrs.push(row.address());
+                }
+            }
+        }
+        breakpoint_addrs.sort();
+        debug!(?breakpoint_addrs);
+
+        let mut entries = unit.entries();
+        while let Some((_, entry)) = entries.next_dfs()? {
+            if entry.tag() == gimli::DW_TAG_subprogram {
+                match (
+                    entry.attr_value(DW_AT_low_pc)?,
+                    entry.attr_value(DW_AT_high_pc)?,
+                ) {
+                    (Some(AttributeValue::Addr(low_pc)), Some(AttributeValue::Udata(high_pc))) => {
+                        debug!(?low_pc, ?high_pc);
+                        if let Some(bp) = breakpoint_addrs
+                            .iter()
+                            .find(|&&x| x > low_pc && x < low_pc + high_pc)
+                        {
+                            bp_map.insert(low_pc, *bp);
+                        }
+                    }
+                    (_, _) => {}
+                }
+            }
+        }
+    }
+    Ok(bp_map)
+}
+
+fn dwarf_parse_function(
+    dwarf: &gimli::Dwarf<gimli::EndianSlice<gimli::RunTimeEndian>>,
+    unit: &gimli::Unit<gimli::EndianSlice<gimli::RunTimeEndian>>,
+    offset: gimli::UnitOffset,
+) -> crate::defs::Result<()> {
+    let mut function_tree = unit.entries_tree(Some(offset))?;
+    // process_tree(function_tree);
+    let root = function_tree.root()?;
+    let mut children = root.children();
+    while let Some(child) = children.next()? {
+        let entry = child.entry();
+        let tag = entry.tag();
+        println!("{:?}", &tag);
+    }
+    Ok(())
 }

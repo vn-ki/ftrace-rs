@@ -4,7 +4,7 @@ mod heuristic;
 use crate::defs::Register;
 use crate::error::ParamFindingFailure;
 
-pub use dwarf::get_functions_dwarf;
+pub use dwarf::{get_functions_dwarf, dwarf_get_line_breakpoints};
 pub use heuristic::get_functions;
 
 #[derive(Debug)]
