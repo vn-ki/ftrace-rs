@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
+use cpp_demangle::Symbol;
 use defs::ProcessInfo;
 use object::Object;
 use process_ext::ProcessExt;
-use ptrace_engine::Process;
+use std::string::ToString;
 use tracing::{debug, warn};
 use tracing_subscriber;
 
@@ -17,8 +18,8 @@ mod process_ext;
 mod ptrace_engine;
 mod utils;
 
+use crate::defs::Result;
 use crate::defs::{DebuggerEngine, DebuggerStatus};
-use crate::defs::{Pid, Result};
 use crate::function::{dwarf_get_line_breakpoints, get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
@@ -26,6 +27,7 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let binary = Path::new("./fact");
+
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
     let binary_is_relocatable = matches!(
@@ -49,11 +51,16 @@ fn main() -> Result<()> {
     let base_region = get_base_region(&maps, binary.canonicalize()?.to_str().unwrap()).unwrap();
     debug!(?binary_is_relocatable, ?base_region);
 
-    for func in funcs.into_iter() {
+    for mut func in funcs.into_iter() {
         let bp_addr = if binary_is_relocatable {
             base_region.start + func.address
         } else {
             func.address
+        };
+        func.name = match Symbol::new(&func.name).map(|op| op.to_string()) {
+            Ok(name) => name,
+            // rustc demangle will return the original if it cant parser
+            Err(_) => rustc_demangle::demangle(&func.name).to_string(),
         };
         debug!("breakpoint set at {}", bp_addr);
         engine.set_breakpoint(&mut last_process, bp_addr)?;
@@ -72,6 +79,7 @@ fn main() -> Result<()> {
                     depth += 1;
                     let registers = last_process.get_registers().unwrap();
                     let params = last_process.get_fn_param_values(&func.parameters)?;
+
                     println!(
                         "{}{}({})",
                         str::repeat("| ", depth),

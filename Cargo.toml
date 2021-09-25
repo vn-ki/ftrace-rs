@@ -16,3 +16,5 @@ tracing = "0.1"
 tracing-subscriber = "0.2"
 thiserror = "1"
 capstone = { path="../capstone-rs/capstone-rs/" }
+rustc-demangle = "0.1"
+cpp_demangle = "0.3.3"
