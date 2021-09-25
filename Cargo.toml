@@ -18,3 +18,4 @@ thiserror = "1"
 capstone = { path="../capstone-rs/capstone-rs/" }
 rustc-demangle = "0.1"
 cpp_demangle = "0.3.3"
+clap = "3.0.0-beta.4"

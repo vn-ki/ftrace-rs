@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::process::Command;
 
+use clap::{AppSettings, Clap};
 use cpp_demangle::Symbol;
 use defs::ProcessInfo;
 use object::Object;
@@ -24,10 +25,17 @@ use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::function::{dwarf_get_line_breakpoints, get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
+#[derive(Clap)]
+struct Opts {
+    /// Path to the binary to be traced
+    binary: String,
+}
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
+    let opts: Opts = Opts::parse();
 
-    let binary = Path::new("./fact");
+    let binary = Path::new(&opts.binary);
 
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;

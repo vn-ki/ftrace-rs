@@ -27,7 +27,7 @@ Compile it and run `ftrace`
 
 ```
 $ gcc fact.c -o fact
-$ cargo run
+$ cargo run ./fact
 | _start(140635318833104)
 | | __libc_csu_init(1, 140736041307608, 140736041307624)
 | | | frame_dummy()
@@ -65,5 +65,4 @@ $ cargo run
 ```
 
 ## stuff it can't do (yet)
-- a proper cli interface
 - use types from DWARF info
