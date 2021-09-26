@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::process::Command;
 
-use clap::{AppSettings, Clap};
+use clap::Clap;
 use cpp_demangle::Symbol;
 use defs::ProcessInfo;
 use object::Object;
@@ -13,6 +13,7 @@ use tracing::{debug, warn};
 use tracing_subscriber;
 
 mod breakpoint;
+mod cli;
 mod defs;
 mod error;
 mod function;
@@ -20,13 +21,17 @@ mod process_ext;
 mod ptrace_engine;
 mod utils;
 
+use crate::cli::FuncSource;
 use crate::defs::Result;
 use crate::defs::{DebuggerEngine, DebuggerStatus};
 use crate::function::{get_functions, get_functions_dwarf};
 use crate::utils::get_base_region;
 
 #[derive(Clap)]
-struct Opts {
+pub struct Opts {
+    /// How to resolve the functions in the binary
+    #[clap(short, long, default_value = "heuristic")]
+    source: FuncSource,
     /// Path to the binary to be traced
     binary: String,
 }
@@ -39,8 +44,6 @@ fn main() -> Result<()> {
 
     let bin_data = std::fs::read(binary)?;
     let obj_file = object::File::parse(&*bin_data)?;
-    let dwarf_funcs = get_functions_dwarf(binary.to_str().unwrap(), &obj_file)?;
-    debug!(?dwarf_funcs);
 
     let binary_is_relocatable = matches!(
         obj_file.kind(),
@@ -53,11 +56,14 @@ fn main() -> Result<()> {
     let maps = last_process.get_memory_maps()?;
     let base_region = get_base_region(&maps, binary.canonicalize()?.to_str().unwrap()).unwrap();
     debug!(?maps, ?binary_is_relocatable, ?base_region);
+    let mut funcs = match opts.source {
+        FuncSource::Heuristic => get_functions(&obj_file),
+        FuncSource::Dwarf => get_functions_dwarf(binary.to_str().unwrap(), &obj_file)?,
+    };
+    debug!(?funcs);
 
-    let obj_funcs = get_functions(&obj_file);
-    let mut funcs = dwarf_funcs;
-    if binary_is_relocatable {
-        for mut func in funcs.iter_mut() {
+    for mut func in funcs.iter_mut() {
+        if binary_is_relocatable {
             func.prologue_end_addr = func.prologue_end_addr.map(|x| x + base_region.start);
             func.address += base_region.start;
         }
