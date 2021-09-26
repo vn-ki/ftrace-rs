@@ -1,4 +1,4 @@
-use gimli::{AttributeValue, DW_AT_high_pc, DW_AT_low_pc};
+use gimli::{AttributeValue, DW_AT_high_pc, DW_AT_low_pc, EvaluationResult};
 use object::{Object, ObjectSection};
 use tracing::debug;
 
@@ -132,6 +132,25 @@ pub fn dwarf_get_line_breakpoints(obj: &object::File) -> crate::defs::Result<Has
         let mut entries = unit.entries();
         while let Some((_, entry)) = entries.next_dfs()? {
             if entry.tag() == gimli::DW_TAG_subprogram {
+                // let frame_base_attr = entry.attr_value(gimli::DW_AT_frame_base)?;
+                // match frame_base_attr {
+                //     Some(AttributeValue::Exprloc(expr)) => {
+                //         let mut eval = expr.evaluation(unit.encoding());
+                //         let mut result = eval.evaluate()?;
+                //         println!("{:?}", result);
+                //         while result != EvaluationResult::Complete {
+                //             match result {
+                //                 EvaluationResult::RequiresCallFrameCfa => {
+                //                     result = eval.resume_with_call_frame_cfa(12341234).unwrap();
+                //                 },
+                //                 _ => unimplemented!(),
+                //             }
+                //         }
+                //         let result = eval.result();
+                //         println!("{:?}", result);
+                //     }
+                //     _ => {}
+                // };
                 match (
                     entry.attr_value(DW_AT_low_pc)?,
                     entry.attr_value(DW_AT_high_pc)?,

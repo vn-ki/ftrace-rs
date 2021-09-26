@@ -16,7 +16,7 @@ pub struct Function {
     pub return_type: Option<FormalParameterKind>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct MemoryParam {
     /// offset from base ptr
     // TODO: can this be something other than base ptr?
