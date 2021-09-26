@@ -32,6 +32,13 @@ pub struct Opts {
     /// How to resolve the functions in the binary
     #[clap(short, long, default_value = "heuristic")]
     source: FuncSource,
+
+    #[clap(short, long)]
+    ignore: Option<regex::Regex>,
+
+    #[clap(short, long)]
+    only: Option<regex::Regex>,
+
     /// Path to the binary to be traced
     binary: String,
 }
@@ -67,8 +74,22 @@ fn main() -> Result<()> {
             func.prologue_end_addr = func.prologue_end_addr.map(|x| x + base_region.start);
             func.address += base_region.start;
         }
+        func.name = match Symbol::new(&func.name).map(|op| op.to_string()) {
+            Ok(name) => name,
+            // rustc demangle will return the original if it cant parser
+            Err(_) => rustc_demangle::demangle(&func.name).to_string(),
+        };
     }
     debug!(?funcs);
+    let to_keep = |name: &str| match (&opts.only, &opts.ignore) {
+        (Some(only), Some(ignore)) => (only.is_match(name) && !ignore.is_match(name)),
+        (Some(only), None) => only.is_match(name),
+        (None, Some(ignore)) => !ignore.is_match(name),
+        (None, None) => true,
+    };
+
+    // filter functions
+    funcs.retain(|f| to_keep(&f.name));
 
     start_trace(engine, last_process, funcs)?;
     Ok(())
@@ -86,12 +107,7 @@ where
     let mut funcs_map = HashMap::new();
     let mut funcs_prologue_map = HashMap::new();
 
-    for mut func in funcs.into_iter() {
-        func.name = match Symbol::new(&func.name).map(|op| op.to_string()) {
-            Ok(name) => name,
-            // rustc demangle will return the original if it cant parser
-            Err(_) => rustc_demangle::demangle(&func.name).to_string(),
-        };
+    for func in funcs.into_iter() {
         let bp_addr = if let Some(start) = func.prologue_end_addr {
             funcs_prologue_map.insert(start, func);
             start
